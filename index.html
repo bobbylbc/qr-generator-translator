@@ -1,0 +1,183 @@
+<html>
+<body>
+
+<div>
+    <button id="clear-all">Clear ALL</button>
+
+    <div>
+    <span>Append Mode:</span>
+    <input type="radio" name="append-mode" value="y" checked>
+    <label for="y">Yes</label>
+    <input type="radio" name="append-mode" value="n">
+    <label for="n">No</label><br>
+    </div>
+</div>    
+<div>
+    <textarea id="show-case" cols="100" rows="30"></textarea>
+    <span id="char-count" style="display: block;">0</span>
+</div>
+<div>
+    <input id="dl-filename" type="text" maxlength="80"></input>
+    <button id="download-as">Download above as filename</button>
+</div>
+<div>
+    <button id="gen-qr">Generate QR</button>
+</div>
+<div id="canvas-zone">
+    <canvas id="show-img" width="200" height="200"></canvas>
+</div>
+
+<script type="text/javascript" src="qrcodelib_reedsolomon.js"></script>
+<script type="text/javascript" src="qrcodelib_qrbase.js"></script>
+<script type="text/javascript" src="qrcodelib_decode.js"></script>
+<script type="text/javascript" src="qrious.min.js"></script>
+<script type="text/javascript">
+  var append = false;
+  var canvasZone = document.getElementById('canvas-zone');
+  var showCase = document.getElementById('show-case');
+  var showImg = document.getElementById('show-img');
+  var charCount = document.getElementById('char-count')
+  var appendMode = document.getElementsByName('append-mode');
+
+  var downloadAsFileName = document.getElementById('dl-filename');
+  var downloadAs = document.getElementById('download-as');
+
+  function clearCanvas() {
+    showImg.getContext('2d').clearRect(0, 0, showImg.width, showImg.height);
+  }
+
+  function clearAll() {
+    for (var i=0; i<appendMode.length; i++) {
+        if (appendMode[i].value == 'y' && appendMode[i].checked) {
+            append = true;
+        }
+    }
+
+    if (!append) {
+        showCase.value = "";
+        charCount.innerHTML = 0;
+    }
+    clearCanvas();
+  }
+
+  function drawQr(elem, text) {
+    var qr = new QRious({
+        element: elem,
+        value: text,
+        size: 800
+    });
+  }
+
+  function generateQr() {
+    clearCanvas();
+
+    var qrTextBlockNum = 1;
+    // assume Binary/byte QR text
+    if (showCase.value.length > 2953) {
+        qrTextBlockNum = Math.ceil(showCase.value.length / 2953);
+    }
+
+    drawQr(showImg, showCase.value.substring(0, 2953));
+
+    for (i=1; i<qrTextBlockNum; i++) { 
+        var newCanvas = document.createElement('canvas');
+        drawQr(newCanvas, showCase.value.substring(2953*i, 2953*(i+1)));
+        canvasZone.appendChild(newCanvas);
+    }
+  }
+
+  window.addEventListener('paste', function(e) {
+    var items =  e.clipboardData.items;
+
+    for (var i=0; i<items.length; i++) {
+        var item = items[i];
+        if (item.kind === 'string') {
+            var output = item.kind + " " + item.type;
+            showCase.value += output;
+
+            item.getAsString(function(t) {
+                showCase.value += " " + t;
+            });
+        }
+        else if (item.kind === 'file' && item.type.indexOf('image') >= 0) {
+            clearAll();
+
+            var blob = item.getAsFile();
+            var ctx = showImg.getContext('2d');
+
+            var img = new Image();
+
+            img.onload = function(){
+                showImg.width = this.width;
+                showImg.height = this.height;
+                ctx.drawImage(img, 0, 0);
+
+                // best guess for number of QR codes
+                var qrCount = Math.round(img.width/img.height);
+                var width = Math.ceil(img.width / qrCount);
+                
+                for (var j=0; j<qrCount; j++) {
+                    var qr = new QRDecode();
+                    var text = qr.decodeImageData(ctx.getImageData(j*width,0, width, img.height), width, img.height);
+                    if (text) {
+                        if (append) {
+                            showCase.value += text;
+                        }
+                        else {
+                            showCase.value = text;
+                        }
+                    }
+                }
+
+            };
+            var URLObj = window.URL || window.webkitURL;
+            img.src = URLObj.createObjectURL(blob);
+        }
+        else {
+            var blob = item.getAsFile();
+
+            var fileReader = new FileReader();
+            fileReader.onload = function() {
+                showCase.value = fileReader.result.substring(fileReader.result.indexOf(';base64,')+8);
+            }
+            fileReader.readAsDataURL(blob);
+            // var output = "Unknown file type: " + item.type + ", name: " + blob.name;
+        }
+        
+    }
+  });
+
+  document.getElementById('clear-all').addEventListener('click', function() {
+      clearAll();
+  });
+
+  document.getElementById('gen-qr').addEventListener('click', function() {
+      generateQr();
+  })
+
+  downloadAs.addEventListener('click', function() {
+      var fileName = downloadAsFileName.value;
+
+      var fullText = showCase.value;
+
+      var link = document.createElement('a');
+      link.innerHTML = 'Download file';
+      link.download = fileName;
+      link.href = 'data:application/octet-stream;base64,' + fullText;
+      link.click();
+  })
+
+  showCase.addEventListener('paste', function(e) {
+    e.stopPropagation();
+    charCount.innerHTML = e.clipboardData.getData('text').length;
+  })
+
+  showCase.addEventListener('keyup', function(e) {
+    e.stopPropagation();
+    charCount.innerHTML = e.target.value.length;
+  })
+</script>
+
+
+</body>
+</html>
